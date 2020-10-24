@@ -52,11 +52,12 @@ describe('test all CLI subcommands', function() {
         await defaultAccount.sendTransaction({to: deployerAddr, value: utils.parseEther('10'), gasLimit: 21000})
         await defaultAccount.sendTransaction({to: userAddr, value: utils.parseEther('10'), gasLimit: 21000})
         await defaultAccount.sendTransaction({to: attesterAddr, value: utils.parseEther('10'), gasLimit: 21000})
-    })    
+    })
 
     describe('deploy CLI subcommand', () => {
         it('should deploy a Unirep contract', async () => {
             const command = `npx ts-node cli/index.ts deploy` +
+                ` -e http://127.0.0.1:8545/ ` +
                 ` -d ${deployerPrivKey} ` + 
                 ` -kn ${maxEpochKeyNonce} ` +
                 ` -l ${epochLength} ` +
