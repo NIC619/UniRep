@@ -20,7 +20,7 @@ import {
 import {
     attesterSignup,
     configureSubparser as configureSubparserForAttesterSignup,
-} from './attestersignup'
+} from './attesterSignUp'
 
 import {
     genEpochKeyAndProof,
@@ -77,8 +77,8 @@ const main = async () => {
     // Subcommand: userSignup
     configureSubparserForUserSignup(subparsers)
 
-    // // Subcommand: attesterSignup
-    // configureSubparserForAttesterSignup(subparsers)
+    // Subcommand: attesterSignup
+    configureSubparserForAttesterSignup(subparsers)
 
     // Subcommand: genEpochKeyAndProof
     configureSubparserForGenEpochKeyAndProof(subparsers)
@@ -110,8 +110,8 @@ const main = async () => {
         await deploy(args)
     } else if (args.subcommand === 'userSignup') {
         await userSignup(args)
-    // } else if (args.subcommand === 'attesterSignup') {
-    //     await attesterSignup(args)
+    } else if (args.subcommand === 'attesterSignup') {
+        await attesterSignup(args)
     } else if (args.subcommand === 'genEpochKeyAndProof') {
         await genEpochKeyAndProof(args)
     } else if (args.subcommand === 'verifyEpochKeyProof') {
