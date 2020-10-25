@@ -15,12 +15,12 @@ import {
 import {
     userSignup,
     configureSubparser as configureSubparserForUserSignup,
-} from './what'
+} from './userSignUp'
 
-// import {
-//     attesterSignup,
-//     configureSubparser as configureSubparserForAttesterSignup,
-// } from './attesterSignup'
+import {
+    attesterSignup,
+    configureSubparser as configureSubparserForAttesterSignup,
+} from './attestersignup'
 
 import {
     genEpochKeyAndProof,
