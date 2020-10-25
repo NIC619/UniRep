@@ -5,8 +5,14 @@
         "noImplicitAny": false,
         "strict": true,
         "outDir": "./build",
+        "declaration": true,
     },
-    "include": ["./scripts"],
+    "exclude": [
+        "node_modules/**"
+    ],
+    "include": [
+        "./ts"
+    ],
     "files": [
         "./buidler.config.ts",
         "node_modules/@nomiclabs/buidler-ethers/src/type-extensions.d.ts",
