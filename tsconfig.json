@@ -5,7 +5,7 @@
         "noImplicitAny": false,
         "strict": true,
         "outDir": "./build",
-        "moduleResolution": "Node",
+        "moduleResolution": "node",
     },
     "exclude": [
         "node_modules/**"
