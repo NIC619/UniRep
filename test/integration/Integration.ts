@@ -153,7 +153,10 @@ describe('Integration', function () {
             console.log(`and epkNullifiers [${epkNullifiers}]`)
 
             const circuitInputs = await users[0].genUserStateTransitionCircuitInputs()
+            const startTime = Math.floor(new Date().getTime() / 1000)
             const results = await genVerifyUserStateTransitionProofAndPublicSignals(stringifyBigInts(circuitInputs))
+            const endTime = Math.floor(new Date().getTime() / 1000)
+            console.log(`Gen UserStateTransition Proof time: ${endTime - startTime} ms (${Math.floor((endTime - startTime) / 1000)} s)`)
             const isValid = await verifyUserStateTransitionProof(results['proof'], results['publicSignals'])
             expect(isValid, 'Verify user transition circuit off-chain failed').to.be.true
             const newGSTLeaf = getSignalByNameViaSym('userStateTransition', results['witness'], 'main.new_GST_leaf')
@@ -281,7 +284,10 @@ describe('Integration', function () {
         it('Verify epoch key of first user', async () => {
             const epochKeyNonce = 0
             const circuitInputs = await users[0].genVerifyEpochKeyCircuitInputs(epochKeyNonce)
+            const startTime = Math.floor(new Date().getTime() / 1000)
             const results = await genVerifyEpochKeyProofAndPublicSignals(stringifyBigInts(circuitInputs))
+            const endTime = Math.floor(new Date().getTime() / 1000)
+            console.log(`Gen EpochKey Proof time: ${endTime - startTime} ms (${Math.floor((endTime - startTime) / 1000)} s)`)
             const isValid = await verifyEPKProof(results['proof'], results['publicSignals'])
             expect(isValid, 'Verify epk proof off-chain failed').to.be.true
             
@@ -328,7 +334,10 @@ describe('Integration', function () {
         it('Verify epoch key of second user', async () => {
             const epochKeyNonce = 0
             const circuitInputs = await users[1].genVerifyEpochKeyCircuitInputs(epochKeyNonce)
+            const startTime = Math.floor(new Date().getTime() / 1000)
             const results = await genVerifyEpochKeyProofAndPublicSignals(stringifyBigInts(circuitInputs))
+            const endTime = Math.floor(new Date().getTime() / 1000)
+            console.log(`Gen EpochKey Proof time: ${endTime - startTime} ms (${Math.floor((endTime - startTime) / 1000)} s)`)
             const isValid = await verifyEPKProof(results['proof'], results['publicSignals'])
             expect(isValid, 'Verify epk proof off-chain failed').to.be.true
             
@@ -502,7 +511,10 @@ describe('Integration', function () {
             console.log(`and epkNullifiers [${epkNullifiers}]`)
 
             const circuitInputs = await users[0].genUserStateTransitionCircuitInputs()
+            const startTime = Math.floor(new Date().getTime() / 1000)
             const results = await genVerifyUserStateTransitionProofAndPublicSignals(stringifyBigInts(circuitInputs))
+            const endTime = Math.floor(new Date().getTime() / 1000)
+            console.log(`Gen UserStateTransition Proof time: ${endTime - startTime} ms (${Math.floor((endTime - startTime) / 1000)} s)`)
             const isValid = await verifyUserStateTransitionProof(results['proof'], results['publicSignals'])
             expect(isValid, 'Verify user transition circuit off-chain failed').to.be.true
             const newGSTLeaf = getSignalByNameViaSym('userStateTransition', results['witness'], 'main.new_GST_leaf')
@@ -605,7 +617,7 @@ describe('Integration', function () {
             const startTime = new Date().getTime()
             const results = await genVerifyReputationProofAndPublicSignals(stringifyBigInts(circuitInputs))
             const endTime = new Date().getTime()
-            console.log(`Gen Proof time: ${endTime - startTime} ms (${Math.floor((endTime - startTime) / 1000)} s)`)
+            console.log(`Gen Reputation Proof time: ${endTime - startTime} ms (${Math.floor((endTime - startTime) / 1000)} s)`)
             const isValid = await verifyProveReputationProof(results['proof'], results['publicSignals'])
             expect(isValid, 'Verify reputation proof off-chain failed').to.be.true
 
