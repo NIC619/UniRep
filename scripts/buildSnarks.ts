@@ -123,8 +123,7 @@ const main = () => {
         return 1
     }
 
-    // Set memory options for node
-    shell.env['NODE_OPTIONS'] = '--max-old-space-size=4096'
+    shell.config.fatal = true
 
     // Check if the circuitOut file exists and if we should not override files
     const circuitOutFileExists = fileExists(circuitOut)
@@ -134,8 +133,23 @@ const main = () => {
     } else {
         console.log(`Compiling ${inputFile}...`)
         // Compile the .circom file
-        shell.exec(`node ./node_modules/circom/cli.js ${inputFile} -r ${circuitOut} -w ${wasmOut} -s ${symOut}`)
-        console.log('Generated', circuitOut, 'and', wasmOut)
+        let startTime = new Date().getTime()
+        shell.exec(`node --stack-size=16384 ./node_modules/circom/cli.js ${inputFile} -r ${circuitOut}`)
+        let endTime = new Date().getTime()
+        console.log('Generated', circuitOut)
+        console.log(`Circuit compile time: ${endTime - startTime} ms (${Math.floor((endTime - startTime) / 1000)} s)`)
+
+        // Temporarily rename r1cs file name to prevent `Only one circuit at a time is permited` error
+        shell.exec(`mv ./${circuitOut} ./${circuitOut}.tmp`)
+
+        startTime = new Date().getTime()
+        shell.exec(`node --stack-size=16384 ./node_modules/circom/cli.js ${inputFile} -w ${wasmOut} -s ${symOut}`)
+        endTime = new Date().getTime()
+        console.log('Generated', wasmOut, 'and', symOut)
+        console.log(`Wasm/Sym gen time: ${endTime - startTime} ms (${Math.floor((endTime - startTime) / 1000)} s)`)
+
+        // Rename r1cs file back to original name
+        shell.exec(`mv ./${circuitOut}.tmp ./${circuitOut}`)
     }
 
     const paramsFileExists = fileExists(paramsOut)
