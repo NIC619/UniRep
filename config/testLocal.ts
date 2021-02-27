@@ -19,11 +19,11 @@ const numAttestationsPerEpochKey = 6;
 const epochLength = 30;  // 30 seconds
 
 
-const circuitGlobalStateTreeDepth = 4;
+const circuitGlobalStateTreeDepth = 32;
 
-const circuitUserStateTreeDepth = 4;
+const circuitUserStateTreeDepth = 32;
 
-const circuitEpochTreeDepth = 8;
+const circuitEpochTreeDepth = 128;
 
 const circuitNullifierTreeDepth = 128;
 
