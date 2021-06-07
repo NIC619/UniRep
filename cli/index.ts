@@ -116,10 +116,10 @@ const main = async () => {
     configureSubparserForListAllPosts(subparsers)
 
     // Subcommand: leaveComment
-    configureSubparserForleaveComment(subparsers)
+    configureSubparserForLeaveComment(subparsers)
 
     // Subcommand: vote
-    configureSubparserForvote(subparsers)
+    configureSubparserForVote(subparsers)
 
     // Subcommand: epochTransition
     configureSubparserForEpochTransition(subparsers)

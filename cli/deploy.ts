@@ -97,7 +97,7 @@ const deploy = async (args: any) => {
     const _numAttestationsPerEpochKey = DEFAULT_NUM_ATTESTATIONS_PER_EPOCH_KEY
 
     // Default given karma
-    const _deaultKarma = DEFAULT_AIRDROPPED_KARMA
+    const _defaultKarma = DEFAULT_AIRDROPPED_KARMA
 
     // Epoch length
     const _epochLength = (args.epoch_length != undefined) ? args.epoch_length : DEFAULT_EPOCH_LENGTH
