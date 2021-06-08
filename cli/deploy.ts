@@ -11,41 +11,41 @@ import {
 } from './utils'
 
 const configureSubparser = (subparsers: any) => {
-    const deployParser = subparsers.addParser(
+    const deployParser = subparsers.add_parser(
         'deploy',
-        { addHelp: true },
+        { add_help: true },
     )
 
-    const deployerPrivkeyGroup = deployParser.addMutuallyExclusiveGroup({ required: true })
+    const deployerPrivkeyGroup = deployParser.add_mutually_exclusive_group({ required: true })
 
-    deployerPrivkeyGroup.addArgument(
-        ['-dp', '--prompt-for-deployer-privkey'],
+    deployerPrivkeyGroup.add_argument(
+        '-dp', '--prompt-for-deployer-privkey',
         {
-            action: 'storeTrue',
+            action: 'store_true',
             help: 'Whether to prompt for the deployer\'s Ethereum private key and ignore -d / --deployer-privkey',
         }
     )
 
-    deployerPrivkeyGroup.addArgument(
-        ['-d', '--deployer-privkey'],
+    deployerPrivkeyGroup.add_argument(
+        '-d', '--deployer-privkey',
         {
             action: 'store',
-            type: 'string',
+            type: 'str',
             help: 'The deployer\'s Ethereum private key',
         }
     )
 
-    deployParser.addArgument(
-        ['-e', '--eth-provider'],
+    deployParser.add_argument(
+        '-e', '--eth-provider',
         {
             action: 'store',
-            type: 'string',
+            type: 'str',
             help: 'A connection string to an Ethereum provider. Default: http://localhost:8545',
         }
     )
 
-    deployParser.addArgument(
-        ['-l', '--epoch-length'],
+    deployParser.add_argument(
+        '-l', '--epoch-length',
         {
             action: 'store',
             type: 'int',
@@ -53,20 +53,20 @@ const configureSubparser = (subparsers: any) => {
         }
     )
 
-    deployParser.addArgument(
-        ['-f', '--attesting-fee'],
+    deployParser.add_argument(
+        '-f', '--attesting-fee',
         {
             action: 'store',
-            type: 'string',
+            type: 'str',
             help: 'The fee to make an attestation. Default: 0.01 eth (i.e., 10 * 16)',
         }
     )
 
-    deployParser.addArgument(
-        ['-td', '--tree-depths-config'],
+    deployParser.add_argument(
+        '-td', '--tree-depths-config',
         {
             action: 'store',
-            type: 'string',
+            type: 'str',
             help: 'The configuration of tree depths: circuit or contract. Default: circuit',
         }
     )
@@ -109,7 +109,7 @@ const deploy = async (args: any) => {
         'maxUsers': maxUsers,
         'numEpochKeyNoncePerEpoch': _numEpochKeyNoncePerEpoch,
         'numAttestationsPerEpochKey': _numAttestationsPerEpochKey,
-        'defaultKarma': _deaultKarma,
+        'defaultKarma': _defaultKarma,
         'epochLength': _epochLength,
         'attestingFee': _attestingFee,
     }

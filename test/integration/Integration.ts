@@ -304,6 +304,7 @@ describe('Integration', function () {
                     GSTreeLeafIndex = newLeafEvents[i]?.args?._leafIndex.toNumber()
                 }
             }
+            expect(GSTreeLeafIndex).to.equal(1)
 
             users[1].signUp(latestTransitionedToEpoch, GSTreeLeafIndex)
             console.log(`Second user signs up with commitment (${commitment}), in epoch ${latestTransitionedToEpoch} and GST leaf ${GSTreeLeafIndex}`)

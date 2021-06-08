@@ -49,12 +49,12 @@ import {
 
 import {
     leaveComment,
-    configureSubparser as configureSubparserForleaveComment,
+    configureSubparser as configureSubparserForLeaveComment,
 } from './leaveComment'
 
 import {
     vote,
-    configureSubparser as configureSubparserForvote,
+    configureSubparser as configureSubparserForVote,
 } from './vote'
 
 import {
@@ -83,7 +83,7 @@ const main = async () => {
         description: 'Unirep',
     })
 
-    const subparsers = parser.addSubparsers({
+    const subparsers = parser.add_subparsers({
         title: 'Subcommands',
         dest: 'subcommand',
     })
@@ -133,7 +133,7 @@ const main = async () => {
     // Subcommand: verifyReputationProof
     configureSubparserForVerifyReputationProofFromAttester(subparsers)
 
-    const args = parser.parseArgs()
+    const args = parser.parse_args()
 
     // Execute the subcommand method
     if (args.subcommand === 'genUnirepIdentity') {
