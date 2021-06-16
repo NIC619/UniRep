@@ -10,7 +10,7 @@ import { DEFAULT_ETH_PROVIDER } from '../../cli/defaults'
 import { genUnirepStateFromContract, UnirepState } from '../../core'
 import { exec } from './utils'
 
-import Unirep from "../../artifacts/contracts/Unirep.sol/Unirep.json"
+import UnirepSocial from "../../artifacts/contracts/UnirepSocial.sol/UnirepSocial.json"
 import { hashOne } from "maci-crypto"
 import { identityCommitmentPrefix, identityPrefix } from '../prefix'
 
@@ -73,13 +73,15 @@ describe('test all CLI subcommands', function() {
             console.log(command)
             console.log(output)
 
-            const regMatch = output.match(/Unirep: (0x[a-fA-F0-9]{40})$/)
-            const unirepAddress = regMatch[1]
+            const unirepRegMatch = output.match(/Unirep: (0x[a-fA-F0-9]{40})/)
+            const regMatch = output.match(/Unirep Social: (0x[a-fA-F0-9]{40})$/)
+            const unirepAddress = unirepRegMatch[1]
+            const unirepSocialAddress = regMatch[1]
 
             const provider = new hardhatEthers.providers.JsonRpcProvider(DEFAULT_ETH_PROVIDER)
             unirepContract = new ethers.Contract(
-                unirepAddress,
-                Unirep.abi,
+                unirepSocialAddress,
+                UnirepSocial.abi,
                 provider,
             )
 
@@ -274,8 +276,7 @@ describe('test all CLI subcommands', function() {
                 ` -x ${unirepContract.address} ` +
                 ` -epk ${epk} ` +
                 ` -pf ${userRepProof} ` +
-                ` -th ${transactionHash}` +
-                ` -act publishPost`
+                ` -th ${transactionHash}` 
 
             const output = exec(command).stdout.trim()
 
@@ -359,8 +360,7 @@ describe('test all CLI subcommands', function() {
                 ` -x ${unirepContract.address} ` +
                 ` -epk ${epk} ` +
                 ` -pf ${userRepProof} ` +
-                ` -th ${transactionHash}` +
-                ` -act vote`
+                ` -th ${transactionHash}`
 
             const output = exec(command).stdout.trim()
 

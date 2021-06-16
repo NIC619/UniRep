@@ -86,7 +86,6 @@ class UnirepState {
 
     private epochKeyToHashchainMap: {[key: string]: BigInt} = {}
     private epochKeyToAttestationsMap: {[key: string]: IAttestation[]} = {}
-    public karmaNullifiersMap: {[key: string]: boolean} = {}
 
     constructor(
         _globalStateTreeDepth: number,
@@ -196,17 +195,6 @@ class UnirepState {
         const attestations = this.epochKeyToAttestationsMap[epochKey]
         if (!attestations) this.epochKeyToAttestationsMap[epochKey] = []
         this.epochKeyToAttestationsMap[epochKey].push(attestation)
-    }
-
-    /*
-    * Add karma nullifiers to the map state
-    */
-    public addKarmaNullifiers = (
-        nullifiers: BigInt[]
-    ) => {
-        for(const nullifier of nullifiers){
-            this.karmaNullifiersMap[nullifier.toString()] = true
-        }
     }
 
     /*

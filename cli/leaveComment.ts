@@ -17,10 +17,11 @@ import { add0x } from '../crypto/SMT'
 import { genUserStateFromContract } from '../core'
 
 import Unirep from "../artifacts/contracts/Unirep.sol/Unirep.json"
+import UnirepSocial from "../artifacts/contracts/UnirepSocial.sol/UnirepSocial.json"
 import { reputationProofPrefix, identityPrefix } from './prefix'
 
-import { DEFAULT_COMMENT_KARMA, MAX_KARMA_BUDGET } from '../config/socialMedia'
-import { formatProofForVerifierContract, genVerifyReputationProofAndPublicSignals, getSignalByNameViaSym, verifyProveReputationProof } from '../circuits/utils'
+import { DEFAULT_COMMENT_KARMA } from '../config/socialMedia'
+import { formatProofForVerifierContract, genVerifyReputationProofAndPublicSignals, verifyProveReputationProof } from '../circuits/utils'
 import { genRandomSalt, stringifyBigInts } from 'maci-crypto'
 import { genEpochKey } from '../core/utils'
 
@@ -44,7 +45,7 @@ const configureSubparser = (subparsers: any) => {
         {
             required: true,
             type: 'str',
-            help: 'The text written in the post',
+            help: 'The text written in the comment',
         }
     )
 
@@ -97,7 +98,7 @@ const configureSubparser = (subparsers: any) => {
         {
             required: true,
             type: 'str',
-            help: 'The Unirep contract address',
+            help: 'The Unirep Social contract address',
         }
     )
 
@@ -123,13 +124,13 @@ const configureSubparser = (subparsers: any) => {
 
 const leaveComment = async (args: any) => {
 
-    // Unirep contract
+    // Unirep Social contract
     if (!validateEthAddress(args.contract)) {
-        console.error('Error: invalid Unirep contract address')
+        console.error('Error: invalid contract address')
         return
     }
 
-    const unirepAddress = args.contract
+    const unirepSocialAddress = args.contract
 
     // Ethereum provider
     const ethProvider = args.eth_provider ? args.eth_provider : DEFAULT_ETH_PROVIDER
@@ -157,17 +158,26 @@ const leaveComment = async (args: any) => {
     const provider = new hardhatEthers.providers.JsonRpcProvider(ethProvider)
     const wallet = new ethers.Wallet(ethSk, provider)
 
-    if (! await contractExists(provider, unirepAddress)) {
+    if (! await contractExists(provider, unirepSocialAddress)) {
         console.error('Error: there is no contract deployed at the specified address')
         return
     }
 
     const startBlock = (args.start_block) ? args.start_block : DEFAULT_START_BLOCK
+    const unirepSocialContract = new ethers.Contract(
+        unirepSocialAddress,
+        UnirepSocial.abi,
+        wallet,
+    )
+
+    const unirepAddress = await unirepSocialContract.unirep()
+
     const unirepContract = new ethers.Contract(
         unirepAddress,
         Unirep.abi,
-        wallet,
+        provider,
     )
+    
     const attestingFee = await unirepContract.attestingFee()
 
     // Validate epoch key nonce
@@ -208,12 +218,6 @@ const leaveComment = async (args: any) => {
     )
 
     const results = await genVerifyReputationProofAndPublicSignals(stringifyBigInts(circuitInputs))
-    const nullifiers: BigInt[] = [] 
-    
-    for (let i = 0; i < MAX_KARMA_BUDGET; i++) {
-        const variableName = 'main.karma_nullifiers['+i+']'
-        nullifiers.push(getSignalByNameViaSym('proveReputation', results['witness'], variableName))
-    }
     
     // TODO: Not sure if this validation is necessary
     const isValid = await verifyProveReputationProof(results['proof'], results['publicSignals'])
@@ -235,16 +239,20 @@ const leaveComment = async (args: any) => {
     // generate a random comment ID
     const commentId = genRandomSalt()
 
+    // Sign the message
+    const message = ethers.utils.solidityKeccak256(["address", "address"], [wallet.address, unirepAddress])
+    const attesterSig = await wallet.signMessage(ethers.utils.arrayify(message))
+
     let tx
     try {
-        tx = await unirepContract.leaveComment(
+        tx = await unirepSocialContract.leaveComment(
+            attesterSig,
             BigInt(args.post_id),
             commentId, 
             epochKey,
             args.text,
             publicSignals,
             proof,
-            nullifiers,
             { value: attestingFee, gasLimit: 1000000 }
         )
     } catch(e) {
