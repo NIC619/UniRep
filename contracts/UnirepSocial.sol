@@ -47,9 +47,9 @@ contract UnirepSocial {
 
     event CommentSubmitted(
         uint256 indexed _epoch,
-        uint256 indexed _commentId,
+        uint256 indexed _postId,
         uint256 indexed _epochKey,
-        uint256 _postId,
+        uint256 _commentId,
         string _hahsedContent,
         uint256[] publicSignals,
         uint256[8] proof
@@ -68,6 +68,11 @@ contract UnirepSocial {
         uint256 indexed _epoch,
         uint256 spendReputationAmount,
         uint256[] reputationNullifiers
+    );
+
+    event UserStateTransitioned(
+        uint256 indexed _epoch,
+        uint256 _leafIndex
     );
 
 
@@ -174,9 +179,9 @@ contract UnirepSocial {
     
         emit CommentSubmitted(
             unirep.currentEpoch(),
-            commentId,
-            epochKey,
             postId,
+            epochKey,
+            commentId,
             hashedContent,
             publicSignals,
             proof
@@ -225,6 +230,11 @@ contract UnirepSocial {
         uint256 _fromNullifierTreeRoot,
         uint256[8] memory _proof) external {
         unirep.updateUserStateRoot(_newGlobalStateTreeLeaf, _attestationNullifiers, _epkNullifiers, _transitionFromEpoch, _fromGlobalStateTree, _fromEpochTree, _fromNullifierTreeRoot, _proof);
+
+        emit UserStateTransitioned(
+            unirep.currentEpoch(),
+            unirep.nextGSTLeafIndex() - 1
+        );
 
     }
 
