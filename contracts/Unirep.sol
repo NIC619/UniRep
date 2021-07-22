@@ -11,6 +11,7 @@ import { UnirepParameters } from './UnirepParameters.sol';
 import { EpochKeyValidityVerifier } from './EpochKeyValidityVerifier.sol';
 import { UserStateTransitionVerifier } from './UserStateTransitionVerifier.sol';
 import { ReputationVerifier } from './ReputationVerifier.sol';
+import { ReputationFromAttesterVerifier } from './ReputationFromAttesterVerifier.sol';
 
 contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
     using SafeMath for uint256;
@@ -23,6 +24,7 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
     EpochKeyValidityVerifier internal epkValidityVerifier;
     UserStateTransitionVerifier internal userStateTransitionVerifier;
     ReputationVerifier internal reputationVerifier;
+    ReputationFromAttesterVerifier internal reputationFromAttesterVerifier;
 
     uint256 public currentEpoch = 1;
 
@@ -47,6 +49,8 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
     uint256 immutable public maxUsers;
 
     uint256 public numUserSignUps = 0;
+
+    uint256 public nextGSTLeafIndex = 0;
 
     mapping(uint256 => bool) public hasUserSignedUp;
 
@@ -94,6 +98,7 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
 
     event NewGSTLeafInserted(
         uint256 indexed _epoch,
+        uint256 _leafIndex,
         uint256 _hashedLeaf
     );
 
@@ -108,13 +113,8 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
 
     event UserStateTransitioned(
         uint256 indexed _toEpoch,
-        uint256 _fromEpoch,
-        uint256 _fromGlobalStateTree,
-        uint256 _fromEpochTree,
-        uint256 _fromNullifierTreeRoot,
-        uint256[8] _proof,
-        uint256[] _attestationNullifiers,
-        uint256[] _epkNullifiers
+        uint256 _leafIndex,
+        UserTransitionedRelated userTransitionedData
     );
 
 
@@ -138,11 +138,12 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
         EpochKeyValidityVerifier _epkValidityVerifier,
         UserStateTransitionVerifier _userStateTransitionVerifier,
         ReputationVerifier _reputationVerifier,
+        ReputationFromAttesterVerifier _reputationFromAttesterVerifier,
         uint8 _numEpochKeyNoncePerEpoch,
         uint8 _numAttestationsPerEpochKey,
         uint256 _epochLength,
         uint256 _attestingFee
-    ) public {
+    ) {
 
         treeDepths = _treeDepths;
 
@@ -150,6 +151,7 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
         epkValidityVerifier = _epkValidityVerifier;
         userStateTransitionVerifier = _userStateTransitionVerifier;
         reputationVerifier = _reputationVerifier;
+        reputationFromAttesterVerifier = _reputationFromAttesterVerifier;
 
         numEpochKeyNoncePerEpoch = _numEpochKeyNoncePerEpoch;
         numAttestationsPerEpochKey = _numAttestationsPerEpochKey;
@@ -167,7 +169,6 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
         // Calculate and store the empty user state tree root. This value must
         // be set before we compute empty global state tree root later
         emptyUserStateRoot = calcEmptyUserStateTreeRoot(_treeDepths.userStateTreeDepth);
-
         emptyGlobalStateTreeRoot = calcEmptyGlobalStateTreeRoot(_treeDepths.globalStateTreeDepth);
 
         attestingFee = _attestingFee;
@@ -178,35 +179,28 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
      * leaf into the state tree.
      * @param _identityCommitment Commitment of the user's identity which is a semaphore identity.
      */
-    function userSignUp(uint256 _identityCommitment) external {
+    function userSignUp(uint256 _identityCommitment, uint256 _airdroppedRepScore) external {
         require(hasUserSignedUp[_identityCommitment] == false, "Unirep: the user has already signed up");
         require(numUserSignUps < maxUsers, "Unirep: maximum number of signups reached");
-
-        // Create, hash, and insert a fresh state leaf
-        StateLeaf memory stateLeaf = StateLeaf({
-            identityCommitment: _identityCommitment,
-            userStateRoot: emptyUserStateRoot
-        });
-
+        
+        // Compute hashed leaf
+        StateLeaf memory stateLeaf;
+        stateLeaf.identityCommitment = _identityCommitment;
+        stateLeaf.userStateRoot = emptyUserStateRoot;
+        stateLeaf.positiveRepScore = _airdroppedRepScore;
+        stateLeaf.negativeRepScore = 0;
         uint256 hashedLeaf = hashStateLeaf(stateLeaf);
 
         hasUserSignedUp[_identityCommitment] = true;
         numUserSignUps ++;
 
         emit Sequencer("UserSignUp");
-        emit NewGSTLeafInserted(currentEpoch, hashedLeaf);
+        emit NewGSTLeafInserted(currentEpoch, nextGSTLeafIndex ,hashedLeaf);
+
+        nextGSTLeafIndex ++;
     }
 
-    function attesterSignUp() external {
-        require(attesters[msg.sender] == 0, "Unirep: attester has already signed up");
-
-        attesters[msg.sender] = nextAttesterId;
-        nextAttesterId ++;
-    }
-
-    function attesterSignUpViaRelayer(address attester, bytes calldata signature) external {
-        require(attesters[attester] == 0, "Unirep: attester has already signed up");
-
+    function verifySignature(address attester, bytes calldata signature) internal view {
         // Attester signs over it's own address concatenated with this contract address
         bytes32 messageHash = keccak256(
             abi.encodePacked(
@@ -220,24 +214,58 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
             ECDSA.recover(messageHash, signature) == attester,
             "Unirep: invalid attester sign up signature"
         );
+    }
+
+    function attesterSignUp() external {
+        require(attesters[msg.sender] == 0, "Unirep: attester has already signed up");
+
+        attesters[msg.sender] = nextAttesterId;
+        nextAttesterId ++;
+    }
+
+    function attesterSignUpViaRelayer(address attester, bytes calldata signature) external {
+        require(attesters[attester] == 0, "Unirep: attester has already signed up");
+        verifySignature(attester, signature);
 
         attesters[attester] = nextAttesterId;
         nextAttesterId ++;
     }
 
-    function submitAttestation(Attestation calldata attestation, uint256 epochKey) external payable {
-        require(attesters[msg.sender] > 0, "Unirep: attester has not signed up yet");
-        require(attesters[msg.sender] == attestation.attesterId, "Unirep: mismatched attesterId");
-        require(isEpochKeyHashChainSealed[epochKey] == false, "Unirep: hash chain of this epoch key has been sealed");
-        require(attestationsMade[epochKey][msg.sender] == false, "Unirep: attester has already attested to this epoch key");
-        require(numAttestationsToEpochKey[epochKey] < numAttestationsPerEpochKey, "Unirep: no more attestations to the epoch key is allowed");
+    function submitAttestationViaRelayer(
+        address attester,
+        bytes calldata signature,
+        Attestation memory attestation,
+        uint256 epochKey
+    ) public payable {
+        verifySignature(attester, signature);
         require(msg.value == attestingFee, "Unirep: no attesting fee or incorrect amount");
+         // Add to the cumulated attesting fee
+        collectedAttestingFee = collectedAttestingFee.add(msg.value);
+        processAttestation(attester, attestation, epochKey);
+    }
 
+    function submitAttestation(
+        Attestation memory attestation,
+        uint256 epochKey
+    ) public payable {
+        require(msg.value == attestingFee, "Unirep: no attesting fee or incorrect amount");
+         // Add to the cumulated attesting fee
+        collectedAttestingFee = collectedAttestingFee.add(msg.value);
+        processAttestation(msg.sender, attestation, epochKey);
+    }
+
+    function processAttestation(
+        address attester,
+        Attestation memory attestation,
+        uint256 epochKey ) internal {
+        require(attesters[attester] > 0, "Unirep: attester has not signed up yet");
+        require(attesters[attester] == attestation.attesterId, "Unirep: mismatched attesterId");
+        require(isEpochKeyHashChainSealed[epochKey] == false, "Unirep: hash chain of this epoch key has been sealed");
+        require(attestationsMade[epochKey][attester] == false, "Unirep: attester has already attested to this epoch key");
+        require(numAttestationsToEpochKey[epochKey] < numAttestationsPerEpochKey, "Unirep: no more attestations to the epoch key is allowed");
+        
         // Before attesting to a given epoch key, an attester must
         // verify validity of the epoch key using `verifyEpochKeyValidity` function.
-
-        // Add to the cumulated attesting fee
-        collectedAttestingFee = collectedAttestingFee.add(msg.value);
 
         // Add the epoch key to epoch key list of current epoch
         // if it is been attested to the first time.
@@ -259,13 +287,13 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
         );
         numAttestationsToEpochKey[epochKey] += 1;
 
-        attestationsMade[epochKey][msg.sender] = true;
+        attestationsMade[epochKey][attester] = true;
 
         emit Sequencer("AttestationSubmitted");
         emit AttestationSubmitted(
             currentEpoch,
             epochKey,
-            msg.sender,
+            attester,
             attestation
         );
     }
@@ -296,6 +324,7 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
 
             latestEpochTransitionTime = block.timestamp;
             currentEpoch ++;
+            nextGSTLeafIndex = 0;
         }
 
         uint256 gasUsed = initGas.sub(gasleft());
@@ -315,37 +344,45 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
         require(_transitionFromEpoch < currentEpoch, "Can not transition from epoch that's greater or equal to current epoch");
         require(_attestationNullifiers.length == numAttestationsPerEpoch, "Unirep: invalid number of nullifiers");
         require(_epkNullifiers.length == numEpochKeyNoncePerEpoch, "Unirep: invalid number of epk nullifiers");
+        
+        UserTransitionedRelated memory userTransitionedData;
+        userTransitionedData.fromEpoch = _transitionFromEpoch;
+        userTransitionedData.fromGlobalStateTree = _fromGlobalStateTree;
+        userTransitionedData.fromEpochTree = _fromEpochTree;
+        userTransitionedData.fromNullifierTreeRoot = _fromNullifierTreeRoot;
+        userTransitionedData.newGlobalStateTreeLeaf = _newGlobalStateTreeLeaf;
+        userTransitionedData.proof = _proof;
+        userTransitionedData.attestationNullifiers = _attestationNullifiers;
+        userTransitionedData.epkNullifiers = _epkNullifiers;
 
         emit Sequencer("UserStateTransitioned");
         emit UserStateTransitioned(
             currentEpoch,
-            _transitionFromEpoch,
-            _fromGlobalStateTree,
-            _fromEpochTree,
-            _fromNullifierTreeRoot,
-            _proof,
-            _attestationNullifiers,
-            _epkNullifiers
+            nextGSTLeafIndex,
+            userTransitionedData
         );
-        emit NewGSTLeafInserted(currentEpoch, _newGlobalStateTreeLeaf);
+
+        nextGSTLeafIndex ++;
+        // emit NewGSTLeafInserted(currentEpoch, _newGlobalStateTreeLeaf);
 
     }
 
     function verifyEpochKeyValidity(
-        uint256 _globalStateTree,
-        uint256 _epoch,
-        uint256 _epochKey,
-        uint256[8] calldata _proof) external view returns (bool) {
+        // uint256 _globalStateTree,
+        // uint256 _epoch,
+        // uint256 _epochKey,
+        uint256[] memory publicSignals,
+        uint256[8] memory _proof) public view returns (bool) {
         // Before attesting to a given epoch key, an attester must verify validity of the epoch key:
         // 1. user has signed up
         // 2. nonce is no greater than numEpochKeyNoncePerEpoch
         // 3. user has transitioned to the epoch(by proving membership in the globalStateTree of that epoch)
         // 4. epoch key is correctly computed
 
-        uint256[] memory publicSignals = new uint256[](3);
-        publicSignals[0] = _globalStateTree;
-        publicSignals[1] = _epoch;
-        publicSignals[2] = _epochKey;
+        // uint256[] memory _publicSignals = new uint256[](3);
+        // _publicSignals[0] = _globalStateTree;
+        // _publicSignals[1] = _epoch;
+        // _publicSignals[2] = _epochKey;
 
         // Ensure that each public input is within range of the snark scalar
         // field.
@@ -359,7 +396,7 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
 
         ProofsRelated memory proof;
         // Unpack the snark proof
-        (
+        (   
             proof.a,
             proof.b,
             proof.c
@@ -376,8 +413,8 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
         uint256[] calldata _epkNullifiers,
         uint256 _transitionFromEpoch,
         uint256 _fromGlobalStateTree,
+        uint256 _airdroppedReputation,
         uint256 _fromEpochTree,
-        uint256 _fromNullifierTreeRoot,
         uint256[8] calldata _proof) external view returns (bool) {
         // Verify validity of new user state:
         // 1. User's identity and state exist in the provided global state tree
@@ -388,51 +425,44 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
         require(_attestationNullifiers.length == numAttestationsPerEpoch, "Unirep: invalid number of nullifiers");
         require(_epkNullifiers.length == numEpochKeyNoncePerEpoch, "Unirep: invalid number of epk nullifiers");
 
-        uint256[] memory publicSignals = new uint256[](5 + numAttestationsPerEpoch + numEpochKeyNoncePerEpoch);
-        publicSignals[0] = _newGlobalStateTreeLeaf;
+        uint256[] memory _publicSignals = new uint256[](5 + numAttestationsPerEpoch + numEpochKeyNoncePerEpoch);
+        _publicSignals[0] = _newGlobalStateTreeLeaf;
         for (uint8 i = 0; i < numAttestationsPerEpoch; i++) {
-            publicSignals[i + 1] = _attestationNullifiers[i];
+            _publicSignals[i + 1] = _attestationNullifiers[i];
         }
         for (uint8 i = 0; i < numEpochKeyNoncePerEpoch; i++) {
-            publicSignals[i + 1 + numAttestationsPerEpoch] = _epkNullifiers[i];
+            _publicSignals[i + 1 + numAttestationsPerEpoch] = _epkNullifiers[i];
         }
-        publicSignals[2 + numAttestationsPerEpoch + numEpochKeyNoncePerEpoch - 1] = _transitionFromEpoch;
-        publicSignals[3 + numAttestationsPerEpoch + numEpochKeyNoncePerEpoch - 1] = _fromGlobalStateTree;
-        publicSignals[4 + numAttestationsPerEpoch + numEpochKeyNoncePerEpoch - 1] = _fromEpochTree;
-        publicSignals[5 + numAttestationsPerEpoch + numEpochKeyNoncePerEpoch - 1] = _fromNullifierTreeRoot;
+        _publicSignals[2 + numAttestationsPerEpoch + numEpochKeyNoncePerEpoch - 1] = _transitionFromEpoch;
+        _publicSignals[3 + numAttestationsPerEpoch + numEpochKeyNoncePerEpoch - 1] = _fromGlobalStateTree;
+        _publicSignals[4 + numAttestationsPerEpoch + numEpochKeyNoncePerEpoch - 1] = _airdroppedReputation;
+        _publicSignals[5 + numAttestationsPerEpoch + numEpochKeyNoncePerEpoch - 1] = _fromEpochTree;
 
         // Ensure that each public input is within range of the snark scalar
         // field.
         // TODO: consider having more granular revert reasons
-        for (uint8 i = 0; i < publicSignals.length; i++) {
+        for (uint8 i = 0; i < _publicSignals.length; i++) {
             require(
-                publicSignals[i] < SNARK_SCALAR_FIELD,
+                _publicSignals[i] < SNARK_SCALAR_FIELD,
                 "Unirep: each public signal must be lt the snark scalar field"
             );
         }
-
         ProofsRelated memory proof;
         // Unpack the snark proof
-        (
+        (   
             proof.a,
             proof.b,
             proof.c
         ) = unpackProof(_proof);
 
         // Verify the proof
-        proof.isValid = userStateTransitionVerifier.verifyProof(proof.a, proof.b, proof.c, publicSignals);
+        proof.isValid = userStateTransitionVerifier.verifyProof(proof.a, proof.b, proof.c, _publicSignals);
         return proof.isValid;
     }
 
     function verifyReputation(
-        uint256 _epoch,
-        uint256 _globalStateTree,
-        uint256 _nullifierTreeRoot,
-        uint256 _attesterId,
-        uint256 _min_pos_rep,
-        uint256 _max_neg_rep,
-        uint256 _graffiti_pre_image,
-        uint256[8] calldata _proof) external view returns (bool) {
+        uint256[] memory publicSignals,
+        uint256[8] memory _proof) public view returns (bool) {
         // User prove his reputation by an attester:
         // 1. User exists in GST
         // 2. It is the latest state user transition to
@@ -440,14 +470,38 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
         // 4. negative reputation is less than `_max_neg_rep`
         // 5. hash of graffiti pre-image matches
 
-        uint256[] memory publicSignals = new uint256[](7);
-        publicSignals[0] = _epoch;
-        publicSignals[1] = _globalStateTree;
-        publicSignals[2] = _nullifierTreeRoot;
-        publicSignals[3] = _attesterId;
-        publicSignals[4] = _min_pos_rep;
-        publicSignals[5] = _max_neg_rep;
-        publicSignals[6] = _graffiti_pre_image;
+        // Ensure that each public input is within range of the snark scalar
+        // field.
+        // TODO: consider having more granular revert reasons
+        for (uint8 i = 0; i < publicSignals.length; i++) {
+            require(
+                publicSignals[i] < SNARK_SCALAR_FIELD,
+                "Unirep: each public signal must be lt the snark scalar field"
+            );
+        }
+
+        ProofsRelated memory proof;
+        // Unpack the snark proof
+        (   
+            proof.a,
+            proof.b,
+            proof.c
+        ) = unpackProof(_proof);
+
+        // Verify the proof
+        proof.isValid = reputationVerifier.verifyProof(proof.a, proof.b, proof.c, publicSignals);
+        return proof.isValid;
+    }
+
+    function verifyReputationFromAttester(
+        uint256[] memory publicSignals,
+        uint256[8] memory _proof) public view returns (bool) {
+        // User prove his reputation by an attester:
+        // 1. User exists in GST
+        // 2. It is the latest state user transition to
+        // 3. positive reputation is greater than `_min_pos_rep`
+        // 4. negative reputation is less than `_max_neg_rep`
+        // 5. hash of graffiti pre-image matches
 
         // Ensure that each public input is within range of the snark scalar
         // field.
@@ -461,14 +515,14 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
 
         ProofsRelated memory proof;
         // Unpack the snark proof
-        (
+        (   
             proof.a,
             proof.b,
             proof.c
         ) = unpackProof(_proof);
 
         // Verify the proof
-        proof.isValid = reputationVerifier.verifyProof(proof.a, proof.b, proof.c, publicSignals);
+        proof.isValid = reputationFromAttesterVerifier.verifyProof(proof.a, proof.b, proof.c, publicSignals);
         return proof.isValid;
     }
 
@@ -505,7 +559,9 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
     function hashedBlankStateLeaf() public view returns (uint256) {
         StateLeaf memory stateLeaf = StateLeaf({
             identityCommitment: 0,
-            userStateRoot: emptyUserStateRoot
+            userStateRoot: emptyUserStateRoot,
+            positiveRepScore: 0,
+            negativeRepScore: 0
         });
 
         return hashStateLeaf(stateLeaf);
@@ -522,7 +578,14 @@ contract Unirep is DomainObjs, ComputeRoot, UnirepParameters {
 
     function calcEmptyGlobalStateTreeRoot(uint8 _levels) internal view returns (uint256) {
         // Compute the hash of a blank state leaf
-        uint256 h = hashedBlankStateLeaf();
+        StateLeaf memory stateLeaf = StateLeaf({
+            identityCommitment: 0,
+            userStateRoot: emptyUserStateRoot,
+            positiveRepScore: 0,
+            negativeRepScore: 0
+        });
+
+        uint256 h = hashStateLeaf(stateLeaf);
 
         return computeEmptyRoot(_levels, h);
     }

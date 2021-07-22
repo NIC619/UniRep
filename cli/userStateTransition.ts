@@ -14,37 +14,38 @@ import {
 import { DEFAULT_ETH_PROVIDER, DEFAULT_START_BLOCK } from './defaults'
 
 import Unirep from "../artifacts/contracts/Unirep.sol/Unirep.json"
+import UnirepSocial from "../artifacts/contracts/UnirepSocial.sol/UnirepSocial.json"
 import { genUserStateFromContract } from '../core'
-import { formatProofForVerifierContract, genVerifyUserStateTransitionProofAndPublicSignals, getSignalByName, getSignalByNameViaSym, verifyUserStateTransitionProof } from '../test/circuits/utils'
+import { formatProofForVerifierContract, genVerifyUserStateTransitionProofAndPublicSignals, getSignalByNameViaSym, verifyUserStateTransitionProof } from '../circuits/utils'
 import { stringifyBigInts } from 'maci-crypto'
 import { identityPrefix } from './prefix'
 
 const configureSubparser = (subparsers: any) => {
-    const parser = subparsers.addParser(
+    const parser = subparsers.add_parser(
         'userStateTransition',
-        { addHelp: true },
+        { add_help: true },
     )
 
-    parser.addArgument(
-        ['-e', '--eth-provider'],
+    parser.add_argument(
+        '-e', '--eth-provider',
         {
             action: 'store',
-            type: 'string',
+            type: 'str',
             help: `A connection string to an Ethereum provider. Default: ${DEFAULT_ETH_PROVIDER}`,
         }
     )
 
-    parser.addArgument(
-        ['-id', '--identity'],
+    parser.add_argument(
+        '-id', '--identity',
         {
             required: true,
-            type: 'string',
+            type: 'str',
             help: 'The (serialized) user\'s identity',
         }
     )
 
-    parser.addArgument(
-        ['-b', '--start-block'],
+    parser.add_argument(
+        '-b', '--start-block',
         {
             action: 'store',
             type: 'int',
@@ -52,30 +53,30 @@ const configureSubparser = (subparsers: any) => {
         }
     )
 
-    parser.addArgument(
-        ['-x', '--contract'],
+    parser.add_argument(
+        '-x', '--contract',
         {
             required: true,
-            type: 'string',
-            help: 'The Unirep contract address',
+            type: 'str',
+            help: 'The Unirep Social contract address',
         }
     )
 
-    const privkeyGroup = parser.addMutuallyExclusiveGroup({ required: true })
+    const privkeyGroup = parser.add_mutually_exclusive_group({ required: true })
 
-    privkeyGroup.addArgument(
-        ['-dp', '--prompt-for-eth-privkey'],
+    privkeyGroup.add_argument(
+        '-dp', '--prompt-for-eth-privkey',
         {
-            action: 'storeTrue',
+            action: 'store_true',
             help: 'Whether to prompt for the user\'s Ethereum private key and ignore -d / --eth-privkey',
         }
     )
 
-    privkeyGroup.addArgument(
-        ['-d', '--eth-privkey'],
+    privkeyGroup.add_argument(
+        '-d', '--eth-privkey',
         {
             action: 'store',
-            type: 'string',
+            type: 'str',
             help: 'The deployer\'s Ethereum private key',
         }
     )
@@ -83,13 +84,13 @@ const configureSubparser = (subparsers: any) => {
 
 const userStateTransition = async (args: any) => {
 
-    // Unirep contract
+    // Unirep Social contract
     if (!validateEthAddress(args.contract)) {
-        console.error('Error: invalid Unirep contract address')
+        console.error('Error: invalid contract address')
         return
     }
 
-    const unirepAddress = args.contract
+    const unirepSocialAddress = args.contract
 
     // Ethereum provider
     const ethProvider = args.eth_provider ? args.eth_provider : DEFAULT_ETH_PROVIDER
@@ -117,16 +118,25 @@ const userStateTransition = async (args: any) => {
     const provider = new hardhatEthers.providers.JsonRpcProvider(ethProvider)
     const wallet = new ethers.Wallet(ethSk, provider)
 
-    if (! await contractExists(provider, unirepAddress)) {
+    if (! await contractExists(provider, unirepSocialAddress)) {
         console.error('Error: there is no contract deployed at the specified address')
         return
     }
+
+    const unirepSocialContract = new ethers.Contract(
+        unirepSocialAddress,
+        UnirepSocial.abi,
+        wallet,
+    )
+
+    const unirepAddress = await unirepSocialContract.unirep()
 
     const unirepContract = new ethers.Contract(
         unirepAddress,
         Unirep.abi,
         wallet,
     )
+
     const startBlock = (args.start_block) ? args.start_block : DEFAULT_START_BLOCK
 
     const nullifierTreeDepth = BigNumber.from((await unirepContract.treeDepths())["nullifierTreeDepth"]).toNumber()
@@ -135,6 +145,7 @@ const userStateTransition = async (args: any) => {
     const decodedIdentity = base64url.decode(encodedIdentity)
     const id = unSerialiseIdentity(decodedIdentity)
     const commitment = genIdentityCommitment(id)
+    const currentEpoch = (await unirepContract.currentEpoch()).toNumber()
 
     const userState = await genUserStateFromContract(
         provider,
@@ -145,13 +156,7 @@ const userStateTransition = async (args: any) => {
     )
 
     const circuitInputs = await userState.genUserStateTransitionCircuitInputs()
-    console.log('Proving user state transition...')
-    console.log('----------------------User State----------------------')
-    console.log(userState.toJSON(4))
-    console.log('------------------------------------------------------')
-    console.log('----------------------Circuit inputs----------------------')
-    console.log(circuitInputs)
-    console.log('----------------------------------------------------------')
+
     const results = await genVerifyUserStateTransitionProofAndPublicSignals(stringifyBigInts(circuitInputs))
     const newGSTLeaf = getSignalByNameViaSym('userStateTransition', results['witness'], 'main.new_GST_leaf')
     const newState = await userState.genNewUserStateAfterTransition()
@@ -159,6 +164,7 @@ const userStateTransition = async (args: any) => {
         console.error('Error: Computed new GST leaf should match')
         return
     }
+    
     const isValid = await verifyUserStateTransitionProof(results['proof'], results['publicSignals'])
     if (!isValid) {
         console.error('Error: user state transition proof generated is not valid!')
@@ -195,7 +201,7 @@ const userStateTransition = async (args: any) => {
 
     let tx
     try {
-        tx = await unirepContract.updateUserStateRoot(
+        tx = await unirepSocialContract.updateUserStateRoot(
             newGSTLeaf,
             outputAttestationNullifiers,
             outputEPKNullifiers,
@@ -204,6 +210,7 @@ const userStateTransition = async (args: any) => {
             epochTreeRoot,
             nullifierTreeRoot,
             formatProofForVerifierContract(results['proof']),
+            { gasLimit: 9000000 }
         )
     } catch(e) {
         console.error('Error: the transaction failed')
@@ -214,7 +221,6 @@ const userStateTransition = async (args: any) => {
     }
 
     console.log('Transaction hash:', tx.hash)
-    const currentEpoch = (await unirepContract.currentEpoch()).toNumber()
     console.log(`User transitioned from epoch ${fromEpoch} to epoch ${currentEpoch}`)        
 }
 

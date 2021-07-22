@@ -13,9 +13,7 @@ import {
     hashOne,
 } from 'maci-crypto'
 import { genNewSMT } from "../utils"
-// import { circuitEpochTreeDepth } from "../../config/testLocal"
-// circuitEpochTreeDepth too large will greatly slow down the test...
-const circuitEpochTreeDepth = 8
+import { circuitEpochTreeDepth } from "../../config/testLocal"
 import { SparseMerkleTreeImpl } from "../../crypto/SMT"
 
 describe('Sparse Merkle Tree circuits', function () {

@@ -2,29 +2,30 @@
     "name": "unirep",
     "version": "0.0.1",
     "description": "",
-    "main": "index.js",
+    "main": "index.ts",
     "scripts": {
-        "build": "npm run installZkutil && npm run buildVerifyEpochKeySnark && npm run buildUserStateTransitionSnark && npm run buildProveReputationSnark",
+        "build": "npm run installZkutil && npm run buildVerifyEpochKeySnark && npm run buildUserStateTransitionSnark && npm run buildProveReputationSnark && npm run buildProveReputationFromAttesterSnark",
         "installZkutil": "./scripts/installZkutil.sh",
         "buildVerifyEpochKeySnark": "./scripts/buildVerifyEpochKeySnark.sh",
         "buildUserStateTransitionSnark": "./scripts/buildUserStateTransitionSnark.sh",
         "buildProveReputationSnark": "./scripts/buildProveReputationSnark.sh",
-        "test-cli": "./scripts/testCLI.sh",
-        "test": "npx hardhat compile && npx ts-node scripts/buildPoseidon.ts && npm run contractUnitTests && npm run circuitUnitTests && npm run integrationTest",
-        "contractUnitTests": "NODE_OPTIONS=--max-old-space-size=4096 npx hardhat test --no-compile $(find test/contracts -name '*.ts')",
-        "circuitUnitTests": "NODE_OPTIONS=--max-old-space-size=4096 npx hardhat test --no-compile $(find test/circuits -name '*.ts')",
-        "integrationTest": "NODE_OPTIONS=--max-old-space-size=4096 npx hardhat test --no-compile $(find test/integration -name '*.ts')"
+        "buildProveReputationFromAttesterSnark": "./scripts/buildProveReputationFromAttesterSnark.sh",
+        "test-cli": "npx hardhat compile && npx ts-node scripts/buildPoseidon.ts && ./scripts/testCLI.sh",
+        "test": "npx hardhat compile && npx ts-node scripts/buildPoseidon.ts && npm run contractUintTests && npm run circuitUintTests && npm run integrationTest",
+        "contractUintTests": "NODE_OPTIONS=--max-old-space-size=4096 npx hardhat test --no-compile $(find test/contracts -name '*.ts')",
+        "circuitUintTests": "NODE_OPTIONS=--max-old-space-size=4096 npx hardhat test --no-compile $(find test/circuits -name '*.ts')",
+        "integrationTest": "npx ts-node scripts/buildPoseidon.ts && NODE_OPTIONS=--max-old-space-size=4096 npx hardhat test --no-compile $(find test/integration -name '*.ts')"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/NIC619/UniRep.git"
+        "url": "git+https://github.com/vivianjeng/UniRep.git"
     },
     "author": "",
     "license": "MIT",
     "bugs": {
-        "url": "https://github.com/NIC619/UniRep/issues"
+        "url": "https://github.com/vivianjeng/UniRep/issues"
     },
-    "homepage": "https://github.com/NIC619/UniRep#readme",
+    "homepage": "https://github.com/vivianjeng/UniRep#readme",
     "devDependencies": {
         "@nomiclabs/hardhat-ethers": "^2.0.2",
         "@nomiclabs/hardhat-waffle": "^2.0.1",

@@ -4,7 +4,6 @@ import lineByLine from 'n-readlines'
 import * as path from 'path'
 import { SnarkProof } from 'libsemaphore'
 const circom = require('circom')
-const snarkjs = require('snarkjs')
 import * as shell from 'shelljs'
 
 import {
@@ -115,6 +114,19 @@ const genVerifyReputationProofAndPublicSignals = (
         'proveReputationCircuit.r1cs',
         'proveReputation.wasm',
         'proveReputation.params',
+        false,
+    )
+}
+
+const genVerifyReputationFromAttesterProofAndPublicSignals = (
+    inputs: any,
+) => {
+    return genProofAndPublicSignals(
+        inputs,
+        '/test/proveReputationFromAttester_test.circom',
+        'proveReputationFromAttesterCircuit.r1cs',
+        'proveReputationFromAttester.wasm',
+        'proveReputationFromAttester.params',
         false,
     )
 }
@@ -262,6 +274,31 @@ const verifyProveReputationProof = (
     return verifyProof('proveReputation.params', proofFilename, publicSignalsFilename)
 }
 
+const verifyProveReputationFromAttesterProof = (
+    proof: any,
+    publicSignals: any,
+) => {
+    const date = Date.now().toString()
+    const proofFilename = `${date}.proveReputationFromAttester.proof.json`
+    const publicSignalsFilename = `${date}.proveReputationFromAttester.publicSignals.json`
+
+    fs.writeFileSync(
+        path.join(__dirname, '../../build/', proofFilename),
+        JSON.stringify(
+            stringifyBigInts(proof)
+        )
+    )
+
+    fs.writeFileSync(
+        path.join(__dirname, '../../build/', publicSignalsFilename),
+        JSON.stringify(
+            stringifyBigInts(publicSignals)
+        )
+    )
+
+    return verifyProof('proveReputationFromAttester.params', proofFilename, publicSignalsFilename)
+}
+
 const formatProofForVerifierContract = (
     _proof: SnarkProof,
 ) => {
@@ -286,9 +323,11 @@ export {
     getSignalByNameViaSym,
     genVerifyEpochKeyProofAndPublicSignals,
     genVerifyReputationProofAndPublicSignals,
+    genVerifyReputationFromAttesterProofAndPublicSignals,
     genVerifyUserStateTransitionProofAndPublicSignals,
     verifyEPKProof,
     verifyProveReputationProof,
+    verifyProveReputationFromAttesterProof,
     verifyUserStateTransitionProof,
     genProofAndPublicSignals,
     verifyProof,

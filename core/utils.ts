@@ -1,12 +1,234 @@
+// The reason for the ts-ignore below is that if we are executing the code via `ts-node` instead of `hardhat`,
+// it can not read the hardhat config and error ts-2305 will be reported.
+// @ts-ignore
+import { ethers as hardhatEthers, waffle } from 'hardhat'
+import { ethers } from 'ethers'
+import Keyv from "keyv"
 import assert from 'assert'
-import { BigNumber, ethers } from 'ethers'
 
 import Unirep from "../artifacts/contracts/Unirep.sol/Unirep.json"
-import { numAttestationsPerEpochKey } from '../config/testLocal'
+import UnirepSocial from "../artifacts/contracts/UnirepSocial.sol/UnirepSocial.json"
+import PoseidonT3 from "../artifacts/contracts/Poseidon.sol/PoseidonT3.json"
+import PoseidonT6 from "../artifacts/contracts/Poseidon.sol/PoseidonT6.json"
+import { attestingFee, circuitEpochTreeDepth, circuitGlobalStateTreeDepth, circuitNullifierTreeDepth, circuitUserStateTreeDepth, epochLength, epochTreeDepth, globalStateTreeDepth, maxUsers, nullifierTreeDepth, numAttestationsPerEpochKey, numEpochKeyNoncePerEpoch, userStateTreeDepth } from '../config/testLocal'
 import { Attestation, IEpochTreeLeaf, UnirepState } from './UnirepState'
 import { IUserStateLeaf, UserState } from './UserState'
-import { hashLeftRight } from 'maci-crypto'
-import { computeEmptyUserStateRoot } from '../test/utils'
+import { hash5, hashLeftRight, IncrementalQuinTree, SnarkBigInt } from 'maci-crypto'
+import { DEFAULT_AIRDROPPED_KARMA, DEFAULT_COMMENT_KARMA, DEFAULT_POST_KARMA } from '../config/socialMedia'
+import { ATTESTATION_NULLIFIER_DOMAIN, EPOCH_KEY_NULLIFIER_DOMAIN, KARMA_NULLIFIER_DOMAIN } from '../config/nullifierDomainSeparator'
+import { SparseMerkleTreeImpl } from '../crypto/SMT'
+
+const defaultUserStateLeaf = hash5([BigInt(0), BigInt(0), BigInt(0), BigInt(0), BigInt(0)])
+const SMT_ZERO_LEAF = hashLeftRight(BigInt(0), BigInt(0))
+const SMT_ONE_LEAF = hashLeftRight(BigInt(1), BigInt(0))
+
+const computeEmptyUserStateRoot = (treeDepth: number): BigInt => {
+    const t = new IncrementalQuinTree(
+        treeDepth,
+        defaultUserStateLeaf,
+        2,
+    )
+    return t.root
+}
+
+const getTreeDepthsForTesting = (deployEnv: string = "circuit") => {
+    if (deployEnv === 'contract') {
+        return {
+            "userStateTreeDepth": userStateTreeDepth,
+            "globalStateTreeDepth": globalStateTreeDepth,
+            "epochTreeDepth": epochTreeDepth,
+            "nullifierTreeDepth": nullifierTreeDepth,
+        }
+    } else if (deployEnv === 'circuit') {
+        return {
+            "userStateTreeDepth": circuitUserStateTreeDepth,
+            "globalStateTreeDepth": circuitGlobalStateTreeDepth,
+            "epochTreeDepth": circuitEpochTreeDepth,
+            "nullifierTreeDepth": circuitNullifierTreeDepth,
+        }
+    } else {
+        throw new Error('Only contract and circuit testing env are supported')
+    }
+}
+
+const deployUnirep = async (
+    deployer: ethers.Signer,
+    _treeDepths: any,
+    _settings?: any): Promise<ethers.Contract> => {
+    let PoseidonT3Contract, PoseidonT6Contract
+    let EpochKeyValidityVerifierContract, UserStateTransitionVerifierContract, ReputationVerifierContract, ReputationFromAttesterVerifierContract
+
+    console.log('Deploying PoseidonT3')
+    PoseidonT3Contract = await waffle.deployContract(
+        deployer,
+        PoseidonT3
+    )
+    console.log('Deploying PoseidonT6')
+    PoseidonT6Contract = await waffle.deployContract(
+        deployer,
+        PoseidonT6,
+        [],
+        {
+            gasLimit: 9000000,
+        }
+    )
+
+    console.log('Deploying EpochKeyValidityVerifier')
+    EpochKeyValidityVerifierContract = await (await hardhatEthers.getContractFactory(
+        "EpochKeyValidityVerifier",
+        deployer
+    )).deploy()
+
+    console.log('Deploying UserStateTransitionVerifier')
+    UserStateTransitionVerifierContract = await (await hardhatEthers.getContractFactory(
+        "UserStateTransitionVerifier",
+        deployer
+    )).deploy()
+
+    console.log('Deploying ReputationVerifier')
+    ReputationVerifierContract = await (await hardhatEthers.getContractFactory(
+        "ReputationVerifier",
+        deployer
+    )).deploy()
+
+    console.log('Deploying ReputationFromAttesterVerifier')
+    ReputationFromAttesterVerifierContract = await (await hardhatEthers.getContractFactory(
+        "ReputationFromAttesterVerifier",
+        deployer
+    )).deploy()
+
+    console.log('Deploying Unirep')
+
+    let _maxUsers, _numEpochKeyNoncePerEpoch, _numAttestationsPerEpochKey, _epochLength, _attestingFee
+    if (_settings) {
+        _maxUsers = _settings.maxUsers
+        _numEpochKeyNoncePerEpoch = _settings.numEpochKeyNoncePerEpoch
+        _numAttestationsPerEpochKey = _settings.numAttestationsPerEpochKey
+        _epochLength = _settings.epochLength
+        _attestingFee = _settings.attestingFee
+    } else {
+        _maxUsers = maxUsers
+        _numEpochKeyNoncePerEpoch = numEpochKeyNoncePerEpoch
+        _numAttestationsPerEpochKey = numAttestationsPerEpochKey
+        _epochLength = epochLength
+        _attestingFee = attestingFee
+    }
+    const f = await hardhatEthers.getContractFactory(
+        "Unirep",
+        {
+            signer: deployer,
+            libraries: {
+                "PoseidonT3": PoseidonT3Contract.address,
+                "PoseidonT6": PoseidonT6Contract.address
+            }
+        }
+    )
+    const c = await (f.deploy(
+        _treeDepths,
+        {
+            "maxUsers": _maxUsers
+        },
+        EpochKeyValidityVerifierContract.address,
+        UserStateTransitionVerifierContract.address,
+        ReputationVerifierContract.address,
+        ReputationFromAttesterVerifierContract.address,
+        _numEpochKeyNoncePerEpoch,
+        _numAttestationsPerEpochKey,
+        _epochLength,
+        _attestingFee,
+        {
+            gasLimit: 9000000,
+        }
+    ))
+
+    // Print out deployment info
+    console.log("-----------------------------------------------------------------")
+    console.log("Bytecode size of Unirep:", Math.floor(Unirep.bytecode.length / 2), "bytes")
+    let receipt = await c.provider.getTransactionReceipt(c.deployTransaction.hash)
+    console.log("Gas cost of deploying Unirep:", receipt.gasUsed.toString())
+    console.log("-----------------------------------------------------------------")
+
+    return c
+}
+
+const deployUnirepSocial = async (
+    deployer: ethers.Signer,
+    UnirepAddr: string,
+    _settings?: any): Promise<ethers.Contract> => {
+
+    console.log('Deploying Unirep Social')
+
+    const _defaultAirdroppedRep = DEFAULT_AIRDROPPED_KARMA
+    const _postReputation = DEFAULT_POST_KARMA
+    const _commentReputation = DEFAULT_COMMENT_KARMA
+
+    const f = await hardhatEthers.getContractFactory(
+        "UnirepSocial",
+        {
+            signer: deployer,
+        }
+    )
+    const c = await (f.deploy(
+        UnirepAddr,
+        _postReputation,
+        _commentReputation,
+        _defaultAirdroppedRep,
+        {
+            gasLimit: 9000000,
+        }
+    ))
+
+    // Print out deployment info
+    console.log("-----------------------------------------------------------------")
+    console.log("Bytecode size of Unirep Social:", Math.floor(UnirepSocial.bytecode.length / 2), "bytes")
+    let receipt = await c.provider.getTransactionReceipt(c.deployTransaction.hash)
+    console.log("Gas cost of deploying Unirep Social:", receipt.gasUsed.toString())
+    console.log("-----------------------------------------------------------------")
+
+    return c
+}
+
+const genEpochKey = (identityNullifier: SnarkBigInt, epoch: number, nonce: number, _epochTreeDepth: number = epochTreeDepth): SnarkBigInt => {
+    const values: any[] = [
+        identityNullifier,
+        epoch,
+        nonce,
+        BigInt(0),
+        BigInt(0),
+    ]
+    let epochKey = hash5(values)
+    // Adjust epoch key size according to epoch tree depth
+    const epochKeyModed = BigInt(epochKey.toString()) % BigInt(2 ** _epochTreeDepth)
+    return epochKeyModed
+}
+
+const genAttestationNullifier = (identityNullifier: SnarkBigInt, attesterId: BigInt, epoch: number, epochKey: BigInt, _nullifierTreeDepth: number = nullifierTreeDepth): SnarkBigInt => {
+    let nullifier = hash5([ATTESTATION_NULLIFIER_DOMAIN, identityNullifier, attesterId, BigInt(epoch), epochKey])
+    const nullifierModed = BigInt(nullifier) % BigInt(2 ** _nullifierTreeDepth)
+    return nullifierModed
+}
+
+const genEpochKeyNullifier = (identityNullifier: SnarkBigInt, epoch: number, nonce: number, _nullifierTreeDepth: number = nullifierTreeDepth): SnarkBigInt => {
+    let nullifier = hash5([EPOCH_KEY_NULLIFIER_DOMAIN, identityNullifier, BigInt(epoch), BigInt(nonce), BigInt(0)])
+    // Adjust epoch key size according to epoch tree depth
+    const nullifierModed = BigInt(nullifier) % BigInt(2 ** _nullifierTreeDepth)
+    return nullifierModed
+}
+
+const genKarmaNullifier = (identityNullifier: SnarkBigInt, epoch: number, nonce: number, _nullifierTreeDepth: number = nullifierTreeDepth): SnarkBigInt => {
+    let nullifier = hash5([KARMA_NULLIFIER_DOMAIN, identityNullifier, BigInt(epoch), BigInt(nonce), BigInt(0)])
+    // Adjust epoch key size according to epoch tree depth
+    const nullifierModed = BigInt(nullifier) % BigInt(2 ** _nullifierTreeDepth)
+    return nullifierModed
+}
+
+const genNewSMT = async (treeDepth: number, defaultLeafHash: BigInt): Promise<SparseMerkleTreeImpl> => {
+    return SparseMerkleTreeImpl.create(
+        new Keyv(),
+        treeDepth,
+        defaultLeafHash,
+    )
+}
 
 /*
  * Retrieves and parses on-chain Unirep contract data to create an off-chain
@@ -118,22 +340,20 @@ const genUnirepStateFromContract = async (
 
             unirepState.epochTransition(epoch, epochTreeLeaves)
         } else if (occurredEvent === "UserStateTransitioned") {
-            const newLeafEvent = newGSTLeafInsertedEvents.pop()
-            assert(newLeafEvent !== undefined, `Event sequence mismatch: missing newGSTLeafInsertedEvent`)
             const userStateTransitionedEvent = userStateTransitionedEvents.pop()
             assert(userStateTransitionedEvent !== undefined, `Event sequence mismatch: missing userStateTransitionedEvent`)
 
-            const newLeaf = newLeafEvent.args?._hashedLeaf
+            const newLeaf = userStateTransitionedEvent.args?.userTransitionedData.newGlobalStateTreeLeaf
 
             const isProofValid = await unirepContract.verifyUserStateTransition(
                 newLeaf,
-                userStateTransitionedEvent.args?._attestationNullifiers,
-                userStateTransitionedEvent.args?._epkNullifiers,
-                userStateTransitionedEvent.args?._fromEpoch,
-                userStateTransitionedEvent.args?._fromGlobalStateTree,
-                userStateTransitionedEvent.args?._fromEpochTree,
-                userStateTransitionedEvent.args?._fromNullifierTreeRoot,
-                userStateTransitionedEvent.args?._proof,
+                userStateTransitionedEvent.args?.userTransitionedData.attestationNullifiers,
+                userStateTransitionedEvent.args?.userTransitionedData.epkNullifiers,
+                userStateTransitionedEvent.args?.userTransitionedData.fromEpoch,
+                userStateTransitionedEvent.args?.userTransitionedData.fromGlobalStateTree,
+                DEFAULT_AIRDROPPED_KARMA,
+                userStateTransitionedEvent.args?.userTransitionedData.fromEpochTree,
+                userStateTransitionedEvent.args?.userTransitionedData.proof,
             )
             // Proof is invalid, skip this step
             if (!isProofValid) {
@@ -141,8 +361,8 @@ const genUnirepStateFromContract = async (
                 continue
             }
 
-            const attestationNullifiersInEvent = userStateTransitionedEvent.args?._attestationNullifiers.map((nullifier) => BigInt(nullifier) % BigInt(2 ** unirepState.nullifierTreeDepth))
-            const epkNullifiersInEvent = userStateTransitionedEvent.args?._epkNullifiers.map((nullifier) => BigInt(nullifier) % BigInt(2 ** unirepState.nullifierTreeDepth))
+            const attestationNullifiersInEvent = userStateTransitionedEvent.args?.userTransitionedData.attestationNullifiers.map((nullifier) => BigInt(nullifier) % BigInt(2 ** unirepState.nullifierTreeDepth))
+            const epkNullifiersInEvent = userStateTransitionedEvent.args?.userTransitionedData.epkNullifiers.map((nullifier) => BigInt(nullifier) % BigInt(2 ** unirepState.nullifierTreeDepth))
             // Combine nullifiers and mod them
             const allNullifiersInEvent = attestationNullifiersInEvent.concat(epkNullifiersInEvent).map((nullifier) => BigInt(nullifier) % BigInt(2 ** unirepState.nullifierTreeDepth))
 
@@ -179,6 +399,10 @@ const genUserStateFromParams = async (
     startBlock: number,
     userIdentity: any,
     userIdentityCommitment: any,
+    transitionedPosRep: number,
+    transitionedNegRep: number,
+    currentEpochPosRep: number,
+    currentEpochNegRep: number,
     latestTransitionedEpoch: number,
     latestGSTLeafIndex: number,
     latestUserStateLeaves?: IUserStateLeaf[],
@@ -193,6 +417,10 @@ const genUserStateFromParams = async (
         userIdentity,
         userIdentityCommitment,
         true,
+        transitionedPosRep,
+        transitionedNegRep,
+        currentEpochPosRep,
+        currentEpochNegRep,
         latestTransitionedEpoch,
         latestGSTLeafIndex,
         latestUserStateLeaves,
@@ -251,10 +479,13 @@ const _genUserStateFromContract = async (
         false,
     )
     const emptyUserStateRoot = computeEmptyUserStateRoot(unirepState.userStateTreeDepth)
-    const userDefaultGSTLeaf = hashLeftRight(
+    const userDefaultGSTLeaf = hash5([
         userIdentityCommitment,
-        emptyUserStateRoot
-    )
+        emptyUserStateRoot,
+        BigInt(DEFAULT_AIRDROPPED_KARMA),
+        BigInt(0),
+        BigInt(0)
+    ])
 
     const newGSTLeafInsertedFilter = unirepContract.filters.NewGSTLeafInserted()
     const newGSTLeafInsertedEvents =  await unirepContract.queryFilter(newGSTLeafInsertedFilter, startBlock)
@@ -314,7 +545,11 @@ const _genUserStateFromContract = async (
                 BigInt(_attestation.graffiti),
                 _attestation.overwriteGraffiti
             )
-            unirepState.addAttestation(attestationEvent.args?._epochKey.toString(), attestation)
+            const epochKey = attestationEvent.args?._epochKey
+            unirepState.addAttestation(epochKey.toString(), attestation)
+            if(userHasSignedUp){
+                userState.updateAttestation(epochKey, attestation.posRep, attestation.negRep)
+            }
         } else if (occurredEvent === "EpochEnded") {
             const epochEndedEvent = epochEndedEvents.pop()
             assert(epochEndedEvent !== undefined, `Event sequence mismatch: missing epochEndedEvent`)
@@ -349,22 +584,20 @@ const _genUserStateFromContract = async (
             // Epoch ends, reset (next) GST leaf index
             currentEpochGSTLeafIndexToInsert = 0
         } else if (occurredEvent === "UserStateTransitioned") {
-            const newLeafEvent = newGSTLeafInsertedEvents.pop()
-            assert(newLeafEvent !== undefined, `Event sequence mismatch: missing newGSTLeafInsertedEvent`)
             const userStateTransitionedEvent = userStateTransitionedEvents.pop()
             assert(userStateTransitionedEvent !== undefined, `Event sequence mismatch: missing userStateTransitionedEvent`)
 
-            const newLeaf = newLeafEvent.args?._hashedLeaf
+            const newLeaf = userStateTransitionedEvent.args?.userTransitionedData.newGlobalStateTreeLeaf
 
             const isProofValid = await unirepContract.verifyUserStateTransition(
                 newLeaf,
-                userStateTransitionedEvent.args?._attestationNullifiers,
-                userStateTransitionedEvent.args?._epkNullifiers,
-                userStateTransitionedEvent.args?._fromEpoch,
-                userStateTransitionedEvent.args?._fromGlobalStateTree,
-                userStateTransitionedEvent.args?._fromEpochTree,
-                userStateTransitionedEvent.args?._fromNullifierTreeRoot,
-                userStateTransitionedEvent.args?._proof,
+                userStateTransitionedEvent.args?.userTransitionedData.attestationNullifiers,
+                userStateTransitionedEvent.args?.userTransitionedData.epkNullifiers,
+                userStateTransitionedEvent.args?.userTransitionedData.fromEpoch,
+                userStateTransitionedEvent.args?.userTransitionedData.fromGlobalStateTree,
+                DEFAULT_AIRDROPPED_KARMA,
+                userStateTransitionedEvent.args?.userTransitionedData.fromEpochTree,
+                userStateTransitionedEvent.args?.userTransitionedData.proof,
             )
             // Proof is invalid, skip this event
             if (!isProofValid) {
@@ -372,8 +605,8 @@ const _genUserStateFromContract = async (
                 continue
             }
 
-            const attestationNullifiersInEvent = userStateTransitionedEvent.args?._attestationNullifiers.map((nullifier) => BigInt(nullifier) % BigInt(2 ** unirepState.nullifierTreeDepth))
-            const epkNullifiersInEvent = userStateTransitionedEvent.args?._epkNullifiers.map((nullifier) => BigInt(nullifier) % BigInt(2 ** unirepState.nullifierTreeDepth))
+            const attestationNullifiersInEvent = userStateTransitionedEvent.args?.userTransitionedData.attestationNullifiers.map((nullifier) => BigInt(nullifier) % BigInt(2 ** unirepState.nullifierTreeDepth))
+            const epkNullifiersInEvent = userStateTransitionedEvent.args?.userTransitionedData.epkNullifiers.map((nullifier) => BigInt(nullifier) % BigInt(2 ** unirepState.nullifierTreeDepth))
             // Combine nullifiers and mod them
             const allNullifiersInEvent = attestationNullifiersInEvent.concat(epkNullifiersInEvent)
 
@@ -394,7 +627,7 @@ const _genUserStateFromContract = async (
 
             if (
                 userHasSignedUp &&
-                (userStateTransitionedEvent.args?._fromEpoch.toNumber() === userState.latestTransitionedEpoch)
+                (userStateTransitionedEvent.args?.userTransitionedData.fromEpoch.toNumber() === userState.latestTransitionedEpoch)
             ) {
                 let epkNullifiersMatched = 0
                 for (const nullifier of epkNullifiers) {
@@ -406,7 +639,7 @@ const _genUserStateFromContract = async (
                     const newState = await userState.genNewUserStateAfterTransition()
                     userState.transition(newState.newUSTLeaves)
                     // User processed all epoch keys so non-zero GST leaf is generated.
-                    assert(BigNumber.from(newState.newGSTLeaf).eq(newLeaf), 'New GST leaf mismatch')
+                    assert(ethers.BigNumber.from(newState.newGSTLeaf).eq(newLeaf), 'New GST leaf mismatch')
                     // User transition to this epoch, increment (next) GST leaf index
                     currentEpochGSTLeafIndexToInsert ++
                 } else if (epkNullifiersMatched > 0) {
@@ -454,6 +687,18 @@ const genUserStateFromContract = async (
 }
 
 export {
+    defaultUserStateLeaf,
+    SMT_ONE_LEAF,
+    SMT_ZERO_LEAF,
+    computeEmptyUserStateRoot,
+    getTreeDepthsForTesting,
+    deployUnirep,
+    deployUnirepSocial,
+    genEpochKey,
+    genAttestationNullifier,
+    genEpochKeyNullifier,
+    genKarmaNullifier,
+    genNewSMT,
     genUnirepStateFromContract,
     genUserStateFromContract,
     genUserStateFromParams,

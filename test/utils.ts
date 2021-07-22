@@ -1,5 +1,5 @@
 // The reason for the ts-ignore below is that if we are executing the code via `ts-node` instead of `hardhat`,
-// it can not read the hardhat config and error ts-2503 will be reported.
+// it can not read the hardhat config and error ts-2305 will be reported.
 // @ts-ignore
 import { ethers as hardhatEthers, waffle } from 'hardhat'
 import { ethers } from 'ethers'
@@ -8,13 +8,13 @@ import { IncrementalQuinTree } from 'maci-crypto'
 import { SparseMerkleTreeImpl, add0x } from '../crypto/SMT'
 import { SnarkBigInt, hash5, hashLeftRight } from '../crypto/crypto'
 import { attestingFee, circuitEpochTreeDepth, circuitGlobalStateTreeDepth, circuitNullifierTreeDepth, circuitUserStateTreeDepth, epochLength, epochTreeDepth, globalStateTreeDepth, numAttestationsPerEpochKey, numEpochKeyNoncePerEpoch, maxUsers, nullifierTreeDepth, userStateTreeDepth} from '../config/testLocal'
-import { ATTESTATION_NULLIFIER_DOMAIN, EPOCH_KEY_NULLIFIER_DOMAIN } from '../config/nullifierDomainSeparator'
+import { ATTESTATION_NULLIFIER_DOMAIN, EPOCH_KEY_NULLIFIER_DOMAIN, KARMA_NULLIFIER_DOMAIN } from '../config/nullifierDomainSeparator'
 
 import Unirep from "../artifacts/contracts/Unirep.sol/Unirep.json"
 import PoseidonT3 from "../artifacts/contracts/Poseidon.sol/PoseidonT3.json"
 import PoseidonT6 from "../artifacts/contracts/Poseidon.sol/PoseidonT6.json"
 
-const getTreeDepthsForTesting = (deployEnv: string = "contract") => {
+const getTreeDepthsForTesting = (deployEnv: string = "circuit") => {
     if (deployEnv === 'contract') {
         return {
             "userStateTreeDepth": userStateTreeDepth,
@@ -39,7 +39,7 @@ const deployUnirep = async (
     _treeDepths: any,
     _settings?: any): Promise<ethers.Contract> => {
     let PoseidonT3Contract, PoseidonT6Contract
-    let EpochKeyValidityVerifierContract, UserStateTransitionVerifierContract, ReputationVerifierContract
+    let EpochKeyValidityVerifierContract, UserStateTransitionVerifierContract, ReputationVerifierContract, ReputationFromAttesterVerifierContract
 
     console.log('Deploying PoseidonT3')
     PoseidonT3Contract = await waffle.deployContract(
@@ -71,6 +71,12 @@ const deployUnirep = async (
     console.log('Deploying ReputationVerifier')
     ReputationVerifierContract = await (await hardhatEthers.getContractFactory(
         "ReputationVerifier",
+        deployer
+    )).deploy()
+
+    console.log('Deploying ReputationFromAttesterVerifier')
+    ReputationFromAttesterVerifierContract = await (await hardhatEthers.getContractFactory(
+        "ReputationFromAttesterVerifier",
         deployer
     )).deploy()
 
@@ -108,6 +114,7 @@ const deployUnirep = async (
         EpochKeyValidityVerifierContract.address,
         UserStateTransitionVerifierContract.address,
         ReputationVerifierContract.address,
+        ReputationFromAttesterVerifierContract.address,
         _numEpochKeyNoncePerEpoch,
         _numAttestationsPerEpochKey,
         _epochLength,
@@ -127,7 +134,7 @@ const deployUnirep = async (
     return c
 }
 
-const genEpochKey = (identityNullifier: SnarkBigInt, epoch: number, nonce: number, _epochTreeDepth: number = epochTreeDepth): SnarkBigInt => {
+const genEpochKey = (identityNullifier: SnarkBigInt, epoch: number, nonce: number, _epochTreeDepth: number = circuitEpochTreeDepth): SnarkBigInt => {
     const values: any[] = [
         identityNullifier,
         epoch,
@@ -149,6 +156,13 @@ const genAttestationNullifier = (identityNullifier: SnarkBigInt, attesterId: Big
 
 const genEpochKeyNullifier = (identityNullifier: SnarkBigInt, epoch: number, nonce: number, _nullifierTreeDepth: number = nullifierTreeDepth): SnarkBigInt => {
     let nullifier = hash5([EPOCH_KEY_NULLIFIER_DOMAIN, identityNullifier, BigInt(epoch), BigInt(nonce), BigInt(0)])
+    // Adjust epoch key size according to epoch tree depth
+    const nullifierModed = BigInt(nullifier) % BigInt(2 ** _nullifierTreeDepth)
+    return nullifierModed
+}
+
+const genKarmaNullifier = (identityNullifier: SnarkBigInt, epoch: number, nonce: number, _nullifierTreeDepth: number = nullifierTreeDepth): SnarkBigInt => {
+    let nullifier = hash5([KARMA_NULLIFIER_DOMAIN, identityNullifier, BigInt(epoch), BigInt(nonce), BigInt(0)])
     // Adjust epoch key size according to epoch tree depth
     const nullifierModed = BigInt(nullifier) % BigInt(2 ** _nullifierTreeDepth)
     return nullifierModed
@@ -233,6 +247,7 @@ export {
     getTreeDepthsForTesting,
     genEpochKey,
     genEpochKeyNullifier,
+    genKarmaNullifier,
     genNewEpochTree,
     genNewNullifierTree,
     genNewUserStateTree,
