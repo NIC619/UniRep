@@ -33,7 +33,7 @@ describe('test all CLI subcommands', function() {
     const commentNonce = 10
     const attestNonce = 15
     const epochLength = 5
-    let unirepContract: ethers.Contract
+    let unirepSocialContract: ethers.Contract
     let unirepState: UnirepState
     
     let userIdentity1, userIdentityCommitment1, userIdentity2, userIdentityCommitment2
@@ -74,12 +74,12 @@ describe('test all CLI subcommands', function() {
             console.log(output)
 
             const unirepRegMatch = output.match(/Unirep: (0x[a-fA-F0-9]{40})/)
-            const regMatch = output.match(/Unirep Social: (0x[a-fA-F0-9]{40})$/)
+            const socialRegMatch = output.match(/Unirep Social: (0x[a-fA-F0-9]{40})$/)
             const unirepAddress = unirepRegMatch[1]
-            const unirepSocialAddress = regMatch[1]
+            const unirepSocialAddress = socialRegMatch[1]
 
             const provider = new hardhatEthers.providers.JsonRpcProvider(DEFAULT_ETH_PROVIDER)
-            unirepContract = new ethers.Contract(
+            unirepSocialContract = new ethers.Contract(
                 unirepSocialAddress,
                 UnirepSocial.abi,
                 provider,
@@ -146,7 +146,7 @@ describe('test all CLI subcommands', function() {
     describe('userSignup CLI subcommand', () => {
         it('should sign user 1 up', async () => {
             const command = `npx ts-node cli/index.ts userSignup` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -c ${userIdentityCommitment1} ` +
                 ` -d ${userPrivKey} `
 
@@ -161,7 +161,7 @@ describe('test all CLI subcommands', function() {
 
         it('should sign user 2 up', async () => {
             const command = `npx ts-node cli/index.ts userSignup` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -c ${userIdentityCommitment2} ` +
                 ` -d ${userPrivKey} `
 
@@ -178,7 +178,7 @@ describe('test all CLI subcommands', function() {
     describe('attesterSignup CLI subcommand', () => {
         it('should sign attester up', async () => {
             const command = `npx ts-node cli/index.ts attesterSignup` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -d ${attesterPrivKey} `
 
             const output = exec(command).stdout.trim()
@@ -192,7 +192,7 @@ describe('test all CLI subcommands', function() {
 
         it('should sign user up', async () => {
             const command = `npx ts-node cli/index.ts attesterSignup` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -d ${userPrivKey} `
 
             const output = exec(command).stdout.trim()
@@ -208,7 +208,7 @@ describe('test all CLI subcommands', function() {
     describe('genEpochKeyAndProof CLI subcommand', () => {
         it('should generate epoch key proof', async () => {
             const command = `npx ts-node cli/index.ts genEpochKeyAndProof` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -id ${userIdentity1} ` +
                 ` -n ${epochKeyNonce} `
 
@@ -227,7 +227,7 @@ describe('test all CLI subcommands', function() {
     describe('verifyEpochKeyProof CLI subcommand', () => {
         it('should verify epoch key proof', async () => {
             const command = `npx ts-node cli/index.ts verifyEpochKeyProof` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -epk ${epk} ` +
                 ` -pf ${epkProof} `
 
@@ -244,7 +244,7 @@ describe('test all CLI subcommands', function() {
     describe('publishPost CLI subcommand', () => {
         it('should publish a post', async () => {
             const command = `npx ts-node cli/index.ts publishPost` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -tx ${text}` +
                 ` -d ${userPrivKey}` +
                 ` -id ${userIdentity1}` +
@@ -273,7 +273,7 @@ describe('test all CLI subcommands', function() {
     describe('verifyReputationProof CLI subcommand', () => {
         it('should verify epoch key proof', async () => {
             const command = `npx ts-node cli/index.ts verifyReputationProof` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -epk ${epk} ` +
                 ` -pf ${userRepProof} ` +
                 ` -th ${transactionHash}` 
@@ -291,7 +291,7 @@ describe('test all CLI subcommands', function() {
     describe('listAllPosts CLI subcommand', () => {
         it('should list all posts', async () => {
             const command = `npx ts-node cli/index.ts listAllPosts` +
-                ` -x ${unirepContract.address} ` 
+                ` -x ${unirepSocialContract.address} ` 
 
             const output = exec(command).stdout.trim()
 
@@ -306,7 +306,7 @@ describe('test all CLI subcommands', function() {
     describe('leaveComment CLI subcommand', () => {
         it('should leave a comment', async () => {
             const command = `npx ts-node cli/index.ts leaveComment` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -pid ${postID} ` +
                 ` -tx ${text2}` +
                 ` -d ${userPrivKey}` +
@@ -327,9 +327,9 @@ describe('test all CLI subcommands', function() {
 
 
     describe('upvote CLI subcommand', () => {
-        it('should upvote to user 2', async () => {
+        it('should upvote to user 1', async () => {
             const command = `npx ts-node cli/index.ts vote` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -d ${attesterPrivKey} ` +
                 ` -epk ${epk} ` +
                 ` -id ${userIdentity2}` +
@@ -357,7 +357,7 @@ describe('test all CLI subcommands', function() {
     describe('verifyReputationProof CLI subcommand', () => {
         it('should verify epoch key proof', async () => {
             const command = `npx ts-node cli/index.ts verifyReputationProof` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -epk ${epk} ` +
                 ` -pf ${userRepProof} ` +
                 ` -th ${transactionHash}`
@@ -375,7 +375,7 @@ describe('test all CLI subcommands', function() {
     describe('epochTransition CLI subcommand', () => {
         it('should transition to next epoch', async () => {
             const command = `npx ts-node cli/index.ts epochTransition` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -d ${deployerPrivKey} ` +
                 ` -t `
 
@@ -392,7 +392,7 @@ describe('test all CLI subcommands', function() {
     describe('userStateTransition CLI subcommand', () => {
         it('should transition user 1 state', async () => {
             const command = `npx ts-node cli/index.ts userStateTransition` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -d ${userPrivKey} ` +
                 ` -id ${userIdentity1} `
 
@@ -407,7 +407,7 @@ describe('test all CLI subcommands', function() {
 
         it('should transition user 2 state', async () => {
             const command = `npx ts-node cli/index.ts userStateTransition` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -d ${userPrivKey} ` +
                 ` -id ${userIdentity2} `
 
@@ -424,7 +424,7 @@ describe('test all CLI subcommands', function() {
     describe('genReputationProofFromAttester CLI subcommand', () => {
         it('should generate user reputation proof', async () => {
             const command = `npx ts-node cli/index.ts genReputationProofFromAttester` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -id ${userIdentity1} ` +
                 ` -a ${attesterId} ` +
                 // ` -mp ${minPosRep} ` +
@@ -445,7 +445,7 @@ describe('test all CLI subcommands', function() {
     describe('verifyReputationProofFromAttester CLI subcommand', () => {
         it('should verify user reputation proof', async () => {
             const command = `npx ts-node cli/index.ts verifyReputationProofFromAttester` +
-                ` -x ${unirepContract.address} ` +
+                ` -x ${unirepSocialContract.address} ` +
                 ` -a ${attesterId} ` +
                 // ` -mp ${minPosRep} ` +
                 ` -mn ${maxNegRep} ` +
