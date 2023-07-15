@@ -32,7 +32,7 @@
         "@types/mocha": "^8.0.4",
         "@types/node": "^14.14.7",
         "chai": "^4.2.0",
-        "ethereum-waffle": "^3.3.0",
+        "ethereum-waffle": "^4.0.10",
         "hardhat": "^2.3.0",
         "keyv": "^4.0.3",
         "ts-node": "^9.0.0"
